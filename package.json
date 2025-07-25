@@ -1,0 +1,54 @@
+{
+  "name": "v2ray-traffic-simulator",
+  "version": "1.0.0",
+  "description": "شبیه‌ساز ترافیک واقعی برای v2ray با قابلیت محاسبه حجم کاربران",
+  "main": "traffic-simulator-nodejs.js",
+  "scripts": {
+    "start": "node traffic-simulator-nodejs.js",
+    "dev": "nodemon traffic-simulator-nodejs.js",
+    "install-deps": "npm install",
+    "setup": "npm run install-deps && chmod +x traffic-simulator-nodejs.js"
+  },
+  "keywords": [
+    "v2ray",
+    "traffic",
+    "simulator",
+    "proxy",
+    "gfw",
+    "bypass"
+  ],
+  "author": "V2Ray Traffic Simulator",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "sqlite3": "^5.1.6",
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "cors": "^2.8.5",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.1.0",
+    "compression": "^1.7.4",
+    "morgan": "^1.10.0",
+    "uuid": "^9.0.1",
+    "socket.io": "^4.7.4",
+    "multer": "^1.4.5-lts.1",
+    "nodemailer": "^6.9.7",
+    "redis": "^4.6.10",
+    "ioredis": "^5.3.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-repo/v2ray-traffic-simulator.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-repo/v2ray-traffic-simulator/issues"
+  },
+  "homepage": "https://github.com/your-repo/v2ray-traffic-simulator#readme"
+} 

@@ -1,0 +1,58 @@
+# Advanced GFW Bypass System - Python Dependencies
+
+# Core web framework
+aiohttp>=3.8.0
+aiohttp-cors>=0.7.0
+fastapi>=0.68.0
+uvicorn>=0.15.0
+flask>=2.0.0
+flask-socketio>=5.0.0
+
+# Security and encryption
+cryptography>=3.4.0
+pyjwt>=2.1.0
+bcrypt>=3.2.0
+
+# Database and caching
+redis>=4.0.0
+sqlite3
+
+# Network and DNS
+dnspython>=2.1.0
+requests>=2.25.0
+websockets>=10.0
+
+# Data processing and analysis
+numpy>=1.21.0
+pandas>=1.3.0
+psutil>=5.8.0
+
+# Web scraping and parsing
+beautifulsoup4>=4.9.0
+lxml>=4.6.0
+
+# File handling
+aiofiles>=0.7.0
+python-multipart>=0.0.5
+
+# Monitoring and logging
+prometheus-client>=0.11.0
+structlog>=21.1.0
+
+# Development and testing
+pytest>=6.2.0
+pytest-asyncio>=0.15.0
+black>=21.0.0
+flake8>=3.9.0
+
+# Optional: Machine learning for advanced detection
+# scikit-learn>=1.0.0
+# tensorflow>=2.6.0
+
+# Optional: GUI components
+# tkinter  # Usually included with Python
+# PyQt5>=5.15.0
+
+# Optional: System monitoring
+# psutil>=5.8.0  # Already included above
+# py-cpuinfo>=7.0.0 
