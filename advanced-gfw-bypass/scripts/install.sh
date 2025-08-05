@@ -65,6 +65,50 @@ detect_os() {
     fi
 }
 
+# Function to detect and configure domain settings
+configure_domain() {
+    print_status "Configuring domain settings..."
+    
+    # Detect server IP
+    SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || curl -s ipinfo.io/ip 2>/dev/null || echo "127.0.0.1")
+    
+    # Set domain name (can be overridden by environment variable)
+    if [[ -z "$DOMAIN_NAME" ]]; then
+        DOMAIN_NAME="$SERVER_IP"
+        print_info "No domain specified, using server IP: $DOMAIN_NAME"
+    else
+        print_info "Using specified domain: $DOMAIN_NAME"
+    fi
+    
+    # Export for other functions
+    export DOMAIN_NAME
+    export SERVER_IP
+    
+    print_status "Domain configuration completed"
+}
+
+# Function to check Python files exist
+check_python_files() {
+    print_status "Checking Python files..."
+    
+    local required_files=(
+        "server/v2ray/config-generator.py"
+        "server/traffic-simulator/advanced-simulator.py"
+        "server/domain-manager/domain-spoofer.py"
+        "server/monitoring/advanced-monitor.py"
+        "client/tools/connection-tester.py"
+    )
+    
+    for file in "${required_files[@]}"; do
+        if [[ ! -f "$PROJECT_ROOT/$file" ]]; then
+            print_error "Required file not found: $file"
+            exit 1
+        fi
+    done
+    
+    print_status "All Python files found"
+}
+
 # Function to install dependencies based on OS
 install_dependencies() {
     local os=$(detect_os)
@@ -73,8 +117,8 @@ install_dependencies() {
     case $os in
         "debian"|"ubuntu")
             print_status "Installing dependencies for Debian/Ubuntu..."
-            sudo apt-get update
-            sudo apt-get install -y \
+            apt-get update
+            apt-get install -y \
                 python3 python3-pip python3-venv \
                 nginx certbot python3-certbot-nginx \
                 redis-server sqlite3 \
@@ -85,8 +129,8 @@ install_dependencies() {
             ;;
         "rhel"|"centos"|"fedora")
             print_status "Installing dependencies for RHEL/CentOS/Fedora..."
-            sudo yum update -y
-            sudo yum install -y \
+            yum update -y
+            yum install -y \
                 python3 python3-pip \
                 nginx certbot python3-certbot-nginx \
                 redis sqlite \
@@ -97,8 +141,8 @@ install_dependencies() {
             ;;
         "arch")
             print_status "Installing dependencies for Arch Linux..."
-            sudo pacman -Syu --noconfirm
-            sudo pacman -S --noconfirm \
+            pacman -Syu --noconfirm
+            pacman -S --noconfirm \
                 python python-pip \
                 nginx certbot certbot-nginx \
                 redis sqlite \
@@ -158,9 +202,9 @@ install_v2ray() {
     bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh)
     
     # Create V2Ray directories
-    sudo mkdir -p /usr/local/etc/v2ray
-    sudo mkdir -p /var/log/v2ray
-    sudo chown -R nobody:nogroup /var/log/v2ray
+    mkdir -p /usr/local/etc/v2ray
+    mkdir -p /var/log/v2ray
+    chown -R nobody:nogroup /var/log/v2ray
     
     print_status "V2Ray installed"
 }
@@ -169,23 +213,35 @@ install_v2ray() {
 configure_nginx() {
     print_status "Configuring Nginx..."
     
-    # Create Nginx configuration
-    cat > /tmp/advanced-gfw-bypass.conf << 'EOF'
+    # Detect server IP and domain
+    SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || curl -s ipinfo.io/ip 2>/dev/null || echo "127.0.0.1")
+    DOMAIN_NAME=${DOMAIN_NAME:-"$SERVER_IP"}
+    
+    print_info "Detected server IP: $SERVER_IP"
+    print_info "Using domain: $DOMAIN_NAME"
+    
+    # Create Nginx configuration with dynamic domain
+    cat > /tmp/advanced-gfw-bypass.conf << EOF
+# Advanced GFW Bypass System - Nginx Configuration
+# Auto-generated configuration
+
+# HTTP server - redirect to HTTPS
 server {
     listen 80;
     server_name _;
     
     # Redirect HTTP to HTTPS
-    return 301 https://$server_name$request_uri;
+    return 301 https://\$server_name\$request_uri;
 }
 
+# HTTPS server
 server {
     listen 443 ssl http2;
     server_name _;
     
-    # SSL configuration
-    ssl_certificate /etc/ssl/certs/example.com.crt;
-    ssl_certificate_key /etc/ssl/private/example.com.key;
+    # SSL configuration - using self-signed certificate
+    ssl_certificate /etc/ssl/certs/advanced-gfw-bypass.crt;
+    ssl_certificate_key /etc/ssl/private/advanced-gfw-bypass.key;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384;
     ssl_prefer_server_ciphers off;
@@ -198,28 +254,37 @@ server {
     add_header X-XSS-Protection "1; mode=block";
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     
-    # Traffic simulator
+    # Traffic simulator - main application
     location / {
         proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
+        
+        # Timeout settings
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
     }
     
     # V2Ray WebSocket path
     location /api/v1/analytics {
         proxy_pass http://127.0.0.1:10086;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
+        
+        # WebSocket specific settings
+        proxy_read_timeout 86400;
+        proxy_send_timeout 86400;
     }
     
     # Static files
@@ -229,29 +294,42 @@ server {
         add_header Cache-Control "public, immutable";
     }
     
-    # Health check
+    # Health check endpoint
     location /health {
         access_log off;
         return 200 "healthy\n";
         add_header Content-Type text/plain;
     }
+    
+    # Status page
+    location /status {
+        stub_status on;
+        access_log off;
+        allow 127.0.0.1;
+        deny all;
+    }
 }
 EOF
     
     # Install configuration
-    sudo cp /tmp/advanced-gfw-bypass.conf /etc/nginx/sites-available/advanced-gfw-bypass
-    sudo ln -sf /etc/nginx/sites-available/advanced-gfw-bypass /etc/nginx/sites-enabled/
+    cp /tmp/advanced-gfw-bypass.conf /etc/nginx/sites-available/advanced-gfw-bypass
+    ln -sf /etc/nginx/sites-available/advanced-gfw-bypass /etc/nginx/sites-enabled/
     
     # Remove default site
-    sudo rm -f /etc/nginx/sites-enabled/default
+    rm -f /etc/nginx/sites-enabled/default
     
     # Test configuration
-    sudo nginx -t
+    if nginx -t; then
+        print_status "Nginx configuration is valid"
+    else
+        print_error "Nginx configuration test failed"
+        return 1
+    fi
     
     # Reload Nginx
-    sudo systemctl reload nginx
+    systemctl reload nginx
     
-    print_status "Nginx configured"
+    print_status "Nginx configured successfully"
 }
 
 # Function to configure firewall
@@ -263,27 +341,27 @@ configure_firewall() {
     case $os in
         "debian"|"ubuntu"|"arch")
             # UFW configuration
-            sudo ufw --force reset
-            sudo ufw default deny incoming
-            sudo ufw default allow outgoing
-            sudo ufw allow ssh
-            sudo ufw allow 80/tcp
-            sudo ufw allow 443/tcp
-            sudo ufw allow 22/tcp
-            sudo ufw --force enable
+            ufw --force reset
+            ufw default deny incoming
+            ufw default allow outgoing
+            ufw allow ssh
+            ufw allow 80/tcp
+            ufw allow 443/tcp
+            ufw allow 22/tcp
+            ufw --force enable
             ;;
         "rhel"|"centos"|"fedora")
             # Firewalld configuration
-            sudo systemctl start firewalld
-            sudo systemctl enable firewalld
-            sudo firewall-cmd --permanent --add-service=ssh
-            sudo firewall-cmd --permanent --add-service=http
-            sudo firewall-cmd --permanent --add-service=https
-            sudo firewall-cmd --reload
+            systemctl start firewalld
+            systemctl enable firewalld
+            firewall-cmd --permanent --add-service=ssh
+            firewall-cmd --permanent --add-service=http
+            firewall-cmd --permanent --add-service=https
+            firewall-cmd --reload
             ;;
         "macos")
             # macOS firewall (basic)
-            sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate on
+            /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate on
             ;;
     esac
     
@@ -294,21 +372,27 @@ configure_firewall() {
 configure_ssl() {
     print_status "Configuring SSL certificates..."
     
-    # Create self-signed certificate for testing
-    sudo mkdir -p /etc/ssl/certs /etc/ssl/private
+    # Detect server IP and domain
+    SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || curl -s ipinfo.io/ip 2>/dev/null || echo "127.0.0.1")
+    DOMAIN_NAME=${DOMAIN_NAME:-"$SERVER_IP"}
     
-    # Generate self-signed certificate
-    sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-        -keyout /etc/ssl/private/example.com.key \
-        -out /etc/ssl/certs/example.com.crt \
-        -subj "/C=US/ST=State/L=City/O=Organization/CN=example.com"
+    # Create directories
+    mkdir -p /etc/ssl/certs /etc/ssl/private
+    
+    # Generate self-signed certificate with proper domain
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout /etc/ssl/private/advanced-gfw-bypass.key \
+        -out /etc/ssl/certs/advanced-gfw-bypass.crt \
+        -subj "/C=US/ST=State/L=City/O=Advanced GFW Bypass/CN=$DOMAIN_NAME" \
+        -addext "subjectAltName = DNS:$DOMAIN_NAME,IP:$SERVER_IP,IP:127.0.0.1"
     
     # Set permissions
-    sudo chmod 600 /etc/ssl/private/example.com.key
-    sudo chmod 644 /etc/ssl/certs/example.com.crt
+    chmod 600 /etc/ssl/private/advanced-gfw-bypass.key
+    chmod 644 /etc/ssl/certs/advanced-gfw-bypass.crt
     
+    print_status "SSL certificate generated for domain: $DOMAIN_NAME"
     print_warning "Self-signed certificate created. For production, use Let's Encrypt:"
-    print_warning "sudo certbot --nginx -d your-domain.com"
+    print_warning "certbot --nginx -d your-domain.com"
     
     print_status "SSL certificates configured"
 }
@@ -393,19 +477,19 @@ WantedBy=multi-user.target
 EOF
     
     # Install services
-    sudo cp /tmp/v2ray.service /etc/systemd/system/
-    sudo cp /tmp/traffic-simulator.service /etc/systemd/system/
-    sudo cp /tmp/domain-manager.service /etc/systemd/system/
-    sudo cp /tmp/monitoring.service /etc/systemd/system/
+    cp /tmp/v2ray.service /etc/systemd/system/
+    cp /tmp/traffic-simulator.service /etc/systemd/system/
+    cp /tmp/domain-manager.service /etc/systemd/system/
+    cp /tmp/monitoring.service /etc/systemd/system/
     
     # Reload systemd
-    sudo systemctl daemon-reload
+    systemctl daemon-reload
     
     # Enable services
-    sudo systemctl enable v2ray
-    sudo systemctl enable traffic-simulator
-    sudo systemctl enable domain-manager
-    sudo systemctl enable monitoring
+    systemctl enable v2ray
+    systemctl enable traffic-simulator
+    systemctl enable domain-manager
+    systemctl enable monitoring
     
     print_status "Systemd services created"
 }
@@ -415,19 +499,19 @@ deploy_application() {
     print_status "Deploying application..."
     
     # Create web directory
-    sudo mkdir -p /var/www/advanced-gfw-bypass
-    sudo chown -R $USER:$USER /var/www/advanced-gfw-bypass
+    mkdir -p /var/www/advanced-gfw-bypass
+    chown -R root:root /var/www/advanced-gfw-bypass
     
     # Copy application files
     cp -r "$PROJECT_ROOT"/* /var/www/advanced-gfw-bypass/
     
     # Set permissions
-    sudo chown -R www-data:www-data /var/www/advanced-gfw-bypass
-    sudo chmod -R 755 /var/www/advanced-gfw-bypass
+    chown -R www-data:www-data /var/www/advanced-gfw-bypass
+    chmod -R 755 /var/www/advanced-gfw-bypass
     
     # Create static directory
-    sudo mkdir -p /var/www/advanced-gfw-bypass/static
-    sudo chown -R www-data:www-data /var/www/advanced-gfw-bypass/static
+    mkdir -p /var/www/advanced-gfw-bypass/static
+    chown -R www-data:www-data /var/www/advanced-gfw-bypass/static
     
     print_status "Application deployed"
 }
@@ -445,8 +529,8 @@ generate_configuration() {
     python server/v2ray/config-generator.py
     
     # Copy V2Ray config
-    sudo cp configs/server.json /usr/local/etc/v2ray/config.json
-    sudo chown nobody:nogroup /usr/local/etc/v2ray/config.json
+    cp configs/server.json /usr/local/etc/v2ray/config.json
+    chown nobody:nogroup /usr/local/etc/v2ray/config.json
     
     print_status "Configuration generated"
 }
@@ -456,20 +540,20 @@ start_services() {
     print_status "Starting services..."
     
     # Start Redis
-    sudo systemctl start redis
-    sudo systemctl enable redis
+    systemctl start redis
+    systemctl enable redis
     
     # Start Nginx
-    sudo systemctl start nginx
-    sudo systemctl enable nginx
+    systemctl start nginx
+    systemctl enable nginx
     
     # Start V2Ray
-    sudo systemctl start v2ray
+    systemctl start v2ray
     
     # Start application services
-    sudo systemctl start traffic-simulator
-    sudo systemctl start domain-manager
-    sudo systemctl start monitoring
+    systemctl start traffic-simulator
+    systemctl start domain-manager
+    systemctl start monitoring
     
     print_status "Services started"
 }
@@ -534,12 +618,17 @@ display_status() {
     print_status "Installation completed!"
     echo ""
     echo -e "${BLUE}📊 System Status:${NC}"
-    echo "  V2Ray: $(sudo systemctl is-active v2ray)"
-    echo "  Nginx: $(sudo systemctl is-active nginx)"
-    echo "  Redis: $(sudo systemctl is-active redis)"
-    echo "  Traffic Simulator: $(sudo systemctl is-active traffic-simulator)"
-    echo "  Domain Manager: $(sudo systemctl is-active domain-manager)"
-    echo "  Monitoring: $(sudo systemctl is-active monitoring)"
+    echo "  V2Ray: $(systemctl is-active v2ray)"
+    echo "  Nginx: $(systemctl is-active nginx)"
+    echo "  Redis: $(systemctl is-active redis)"
+    echo "  Traffic Simulator: $(systemctl is-active traffic-simulator)"
+    echo "  Domain Manager: $(systemctl is-active domain-manager)"
+    echo "  Monitoring: $(systemctl is-active monitoring)"
+    echo ""
+    echo -e "${BLUE}🌐 Domain Information:${NC}"
+    echo "  Server IP: $SERVER_IP"
+    echo "  Domain: $DOMAIN_NAME"
+    echo "  SSL Certificate: /etc/ssl/certs/advanced-gfw-bypass.crt"
     echo ""
     echo -e "${BLUE}📁 Important Files:${NC}"
     echo "  V2Ray Config: /usr/local/etc/v2ray/config.json"
@@ -548,17 +637,23 @@ display_status() {
     echo "  Client Configs: /var/www/advanced-gfw-bypass/client/configs/"
     echo ""
     echo -e "${BLUE}🔧 Management Commands:${NC}"
-    echo "  View logs: sudo journalctl -u v2ray -f"
-    echo "  Restart services: sudo systemctl restart v2ray nginx"
-    echo "  Check status: sudo systemctl status v2ray"
+    echo "  View logs: journalctl -u v2ray -f"
+    echo "  Restart services: systemctl restart v2ray nginx"
+    echo "  Check status: systemctl status v2ray"
+    echo "  Test Nginx: nginx -t"
     echo ""
     echo -e "${BLUE}📱 Client Setup:${NC}"
     echo "  Download client configs from: /var/www/advanced-gfw-bypass/client/configs/"
     echo "  Use V2RayN (Windows), V2RayU (macOS), or V2RayNG (Android)"
     echo ""
+    echo -e "${BLUE}🌐 Access URLs:${NC}"
+    echo "  HTTPS: https://$DOMAIN_NAME"
+    echo "  Health Check: https://$DOMAIN_NAME/health"
+    echo "  Status Page: https://$DOMAIN_NAME/status"
+    echo ""
     echo -e "${YELLOW}⚠️  Important Notes:${NC}"
-    echo "  - Replace example.com with your actual domain"
-    echo "  - Obtain SSL certificate: sudo certbot --nginx -d your-domain.com"
+    echo "  - SSL certificate is self-signed (for testing)"
+    echo "  - For production, use Let's Encrypt: certbot --nginx -d your-domain.com"
     echo "  - Update firewall rules for your specific needs"
     echo "  - Monitor logs for any issues"
     echo ""
@@ -569,12 +664,6 @@ display_status() {
 main() {
     echo "Starting installation at $(date)"
     
-    # Check if running as root
-    if [[ $EUID -eq 0 ]]; then
-        print_error "This script should not be run as root"
-        exit 1
-    fi
-    
     # Check if running on supported OS
     local os=$(detect_os)
     if [[ "$os" == "unknown" ]]; then
@@ -582,13 +671,19 @@ main() {
         exit 1
     fi
     
+    # Check Python files exist
+    check_python_files
+    
+    # Configure domain settings first
+    configure_domain
+    
     # Installation steps
     install_dependencies
     install_python_dependencies
     install_v2ray
+    configure_ssl
     configure_nginx
     configure_firewall
-    configure_ssl
     create_services
     deploy_application
     generate_configuration
