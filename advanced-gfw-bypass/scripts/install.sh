@@ -17,6 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 SERVER_DIR="$PROJECT_ROOT/server"
 CLIENT_DIR="$PROJECT_ROOT/client"
+INSTALL_DIR="/root/bypass-gfw/advanced-gfw-bypass"
 
 # Logging
 LOG_FILE="$PROJECT_ROOT/install.log"
@@ -73,15 +74,14 @@ detect_os() {
 configure_domain() {
     print_status "Configuring domain settings..."
     
-    # Detect server IP
-    SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || curl -s ipinfo.io/ip 2>/dev/null || echo "127.0.0.1")
-    
-    # Set domain name (can be overridden by environment variable)
+    # Use environment variables if set, otherwise use default
     if [[ -z "$DOMAIN_NAME" ]]; then
+        # Detect server IP
+        SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || curl -s ipinfo.io/ip 2>/dev/null || echo "127.0.0.1")
         DOMAIN_NAME="$SERVER_IP"
-        print_info "No domain specified, using server IP: $DOMAIN_NAME"
+        print_info "استفاده از IP سرور: $DOMAIN_NAME"
     else
-        print_info "Using specified domain: $DOMAIN_NAME"
+        print_info "استفاده از دامنه تنظیم شده: $DOMAIN_NAME"
     fi
     
     # Export for other functions
@@ -208,7 +208,7 @@ install_v2ray() {
     # Create V2Ray directories
     mkdir -p /usr/local/etc/v2ray
     mkdir -p /var/log/v2ray
-    chown -R nobody:nogroup /var/log/v2ray
+    chown -R v2ray:v2ray /var/log/v2ray
     
     print_status "V2Ray installed"
 }
@@ -293,7 +293,7 @@ server {
     
     # Static files
     location /static/ {
-        alias /var/www/advanced-gfw-bypass/static/;
+        alias $INSTALL_DIR/static/;
         expires 1y;
         add_header Cache-Control "public, immutable";
     }
@@ -405,6 +405,12 @@ configure_ssl() {
 create_services() {
     print_status "Creating systemd services..."
     
+    # Create v2ray user
+    if ! id "v2ray" &>/dev/null; then
+        useradd -r -s /bin/false v2ray
+        print_status "User v2ray created"
+    fi
+    
     # V2Ray service
     cat > /tmp/v2ray.service << 'EOF'
 [Unit]
@@ -413,7 +419,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=nobody
+User=v2ray
 ExecStart=/usr/local/bin/v2ray run -config /usr/local/etc/v2ray/config.json
 Restart=on-failure
 RestartSec=5s
@@ -424,17 +430,17 @@ WantedBy=multi-user.target
 EOF
     
     # Traffic simulator service
-    cat > /tmp/traffic-simulator.service << 'EOF'
+    cat > /tmp/traffic-simulator.service << EOF
 [Unit]
 Description=Advanced Traffic Simulator
 After=network.target
 
 [Service]
 Type=simple
-User=www-data
-WorkingDirectory=/var/www/advanced-gfw-bypass
-Environment=PATH=/var/www/advanced-gfw-bypass/venv/bin
-ExecStart=/var/www/advanced-gfw-bypass/venv/bin/python server/traffic-simulator/advanced-simulator.py
+User=root
+WorkingDirectory=$INSTALL_DIR
+Environment=PATH=$INSTALL_DIR/venv/bin
+ExecStart=$INSTALL_DIR/venv/bin/python server/traffic-simulator/advanced-simulator.py
 Restart=on-failure
 RestartSec=5s
 
@@ -443,17 +449,17 @@ WantedBy=multi-user.target
 EOF
     
     # Domain manager service
-    cat > /tmp/domain-manager.service << 'EOF'
+    cat > /tmp/domain-manager.service << EOF
 [Unit]
 Description=Advanced Domain Manager
 After=network.target
 
 [Service]
 Type=simple
-User=www-data
-WorkingDirectory=/var/www/advanced-gfw-bypass
-Environment=PATH=/var/www/advanced-gfw-bypass/venv/bin
-ExecStart=/var/www/advanced-gfw-bypass/venv/bin/python server/domain-manager/domain-spoofer.py
+User=root
+WorkingDirectory=$INSTALL_DIR
+Environment=PATH=$INSTALL_DIR/venv/bin
+ExecStart=$INSTALL_DIR/venv/bin/python server/domain-manager/domain-spoofer.py
 Restart=on-failure
 RestartSec=5s
 
@@ -462,17 +468,17 @@ WantedBy=multi-user.target
 EOF
     
     # Monitoring service
-    cat > /tmp/monitoring.service << 'EOF'
+    cat > /tmp/monitoring.service << EOF
 [Unit]
 Description=Advanced Monitoring System
 After=network.target
 
 [Service]
 Type=simple
-User=www-data
-WorkingDirectory=/var/www/advanced-gfw-bypass
-Environment=PATH=/var/www/advanced-gfw-bypass/venv/bin
-ExecStart=/var/www/advanced-gfw-bypass/venv/bin/python server/monitoring/advanced-monitor.py
+User=root
+WorkingDirectory=$INSTALL_DIR
+Environment=PATH=$INSTALL_DIR/venv/bin
+ExecStart=$INSTALL_DIR/venv/bin/python server/monitoring/advanced-monitor.py
 Restart=on-failure
 RestartSec=5s
 
@@ -503,19 +509,19 @@ deploy_application() {
     print_status "Deploying application..."
     
     # Create web directory
-    mkdir -p /var/www/advanced-gfw-bypass
-    chown -R root:root /var/www/advanced-gfw-bypass
+    mkdir -p "$INSTALL_DIR"
+    chown -R root:root "$INSTALL_DIR"
     
     # Copy application files
-    cp -r "$PROJECT_ROOT"/* /var/www/advanced-gfw-bypass/
+    cp -r "$PROJECT_ROOT"/* "$INSTALL_DIR/"
     
     # Set permissions
-    chown -R www-data:www-data /var/www/advanced-gfw-bypass
-    chmod -R 755 /var/www/advanced-gfw-bypass
+    chown -R root:root "$INSTALL_DIR"
+    chmod -R 755 "$INSTALL_DIR"
     
     # Create static directory
-    mkdir -p /var/www/advanced-gfw-bypass/static
-    chown -R www-data:www-data /var/www/advanced-gfw-bypass/static
+    mkdir -p "$INSTALL_DIR/static"
+    chown -R root:root "$INSTALL_DIR/static"
     
     print_status "Application deployed"
 }
@@ -524,7 +530,7 @@ deploy_application() {
 generate_configuration() {
     print_status "Generating initial configuration..."
     
-    cd /var/www/advanced-gfw-bypass
+    cd "$INSTALL_DIR"
     
     # Activate virtual environment
     source venv/bin/activate
@@ -534,7 +540,12 @@ generate_configuration() {
     
     # Copy V2Ray config
     cp configs/server.json /usr/local/etc/v2ray/config.json
-    chown nobody:nogroup /usr/local/etc/v2ray/config.json
+    chown v2ray:v2ray /usr/local/etc/v2ray/config.json
+    
+    # Update V2Ray config with correct domain and SSL paths
+    sed -i "s/your-domain.com/$DOMAIN_NAME/g" /usr/local/etc/v2ray/config.json
+    sed -i "s|/etc/ssl/certs/your-domain.com.crt|/etc/ssl/certs/advanced-gfw-bypass.crt|g" /usr/local/etc/v2ray/config.json
+    sed -i "s|/etc/ssl/private/your-domain.com.key|/etc/ssl/private/advanced-gfw-bypass.key|g" /usr/local/etc/v2ray/config.json
     
     print_status "Configuration generated"
 }
@@ -566,7 +577,7 @@ start_services() {
 create_client_configs() {
     print_status "Creating client configurations..."
     
-    cd /var/www/advanced-gfw-bypass
+    cd "$INSTALL_DIR"
     
     # Create client configs directory
     mkdir -p client/configs
@@ -637,8 +648,8 @@ display_status() {
     echo -e "${BLUE}📁 Important Files:${NC}"
     echo "  V2Ray Config: /usr/local/etc/v2ray/config.json"
     echo "  Nginx Config: /etc/nginx/sites-available/advanced-gfw-bypass"
-    echo "  Application: /var/www/advanced-gfw-bypass"
-    echo "  Client Configs: /var/www/advanced-gfw-bypass/client/configs/"
+    echo "  Application: $INSTALL_DIR"
+    echo "  Client Configs: $INSTALL_DIR/client/configs/"
     echo ""
     echo -e "${BLUE}🔧 Management Commands:${NC}"
     echo "  View logs: journalctl -u v2ray -f"
@@ -647,7 +658,7 @@ display_status() {
     echo "  Test Nginx: nginx -t"
     echo ""
     echo -e "${BLUE}📱 Client Setup:${NC}"
-    echo "  Download client configs from: /var/www/advanced-gfw-bypass/client/configs/"
+    echo "  Download client configs from: $INSTALL_DIR/client/configs/"
     echo "  Use V2RayN (Windows), V2RayU (macOS), or V2RayNG (Android)"
     echo ""
     echo -e "${BLUE}🌐 Access URLs:${NC}"
