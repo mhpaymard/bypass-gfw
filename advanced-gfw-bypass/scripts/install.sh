@@ -342,8 +342,9 @@ EOF
         return 1
     fi
     
-    # Reload Nginx
-    systemctl reload nginx
+    # Start and reload Nginx
+    systemctl start nginx 2>/dev/null || true
+    systemctl reload nginx 2>/dev/null || true
     
     print_status "Nginx configured successfully"
 }
