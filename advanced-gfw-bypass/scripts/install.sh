@@ -202,13 +202,25 @@ install_python_dependencies() {
 install_v2ray() {
     print_status "Installing V2Ray..."
     
+    # Create v2ray user first
+    if ! id "v2ray" &>/dev/null; then
+        useradd -r -s /bin/false v2ray
+        print_status "User v2ray created"
+    fi
+    
     # Download and install V2Ray
     bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh)
     
     # Create V2Ray directories
     mkdir -p /usr/local/etc/v2ray
     mkdir -p /var/log/v2ray
+    
+    # Fix V2Ray service to use v2ray user instead of nobody
+    sed -i 's/User=nobody/User=v2ray/g' /etc/systemd/system/v2ray.service
+    
+    # Set proper permissions
     chown -R v2ray:v2ray /var/log/v2ray
+    chown v2ray:v2ray /usr/local/etc/v2ray/config.json 2>/dev/null || true
     
     print_status "V2Ray installed"
 }
